@@ -1,0 +1,47 @@
+name:                c-interpreter
+version:             0.1.0.0
+synopsis:            Synopsis for additional task 1
+description:         Additional task 1 for FP ITMO course
+
+homepage:            https://github.com/fp-homework
+license:             MIT
+license-file:        LICENSE
+author:              Author name here
+maintainer:          example@example.com
+copyright:           2020 Author name here
+
+category:            Web
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+tested-with:         GHC == 8.0.1
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Language, Language.Lexer, Language.Parser, Language.Syntax, Language.Syntax.AST, Language.Syntax.Internals, Language.Syntax.Token
+  other-modules:       Paths_c_interpreter
+  ghc-options:         -Wall
+  build-depends:       array
+                     , base >=4.9 && <5
+                     , containers
+                     , mtl
+                     , optparse-applicative
+                     , transformers
+  default-language: Haskell2010
+
+executable c-interpreter-exe
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  other-modules:       Paths_c_interpreter
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       array
+                     , base >=4.9 && <5
+                     , c-interpreter
+                     , containers
+                     , mtl
+                     , optparse-applicative
+                     , transformers
+  build-tools:         alex
+                     , happy
+  default-language: Haskell2010
+
