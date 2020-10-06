@@ -33,7 +33,7 @@ executable c-interpreter-exe
   hs-source-dirs:      app
   main-is:             Main.hs
   other-modules:       Paths_c_interpreter
-  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:         -Wall -Werror -threaded -rtsopts -with-rtsopts=-N
   build-depends:       array
                      , base >=4.9 && <5
                      , c-interpreter
