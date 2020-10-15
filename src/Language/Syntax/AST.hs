@@ -348,6 +348,50 @@ instance Castable Value where
 
 
 
+-- Handling exceptions
+data InterpreterError
+  = FunctionIsNotDefined Identifier
+  | FunctionAlreadyDefined Identifier
+  | ReservedIdentifier Identifier
+  | TypeCastingError String
+  | UnknownVariable Identifier
+  | UnknownFunction Identifier
+  | WrongNumberOfArgs Function
+  | NoReturnStatement Identifier
+  | EmptyVariable Identifier
+  deriving Show
+
+
+
+showInterpreterError :: InterpreterError -> String
+showInterpreterError (FunctionIsNotDefined id')
+  = "Function with name " <> toSourceCode id' <> " is not defined."
+
+showInterpreterError (FunctionAlreadyDefined id')
+  = "Function with name " <> toSourceCode id' <> " was already defined."
+
+showInterpreterError (ReservedIdentifier id')
+  = "Identifier " <> toSourceCode id' <> " is reserved."
+
+showInterpreterError (TypeCastingError s)
+  = "Type casting error at: " <> s
+
+showInterpreterError (UnknownVariable id')
+  = "Unknown variable: " <> toSourceCode id'
+
+showInterpreterError (UnknownFunction id')
+  = "Unknown function: " <> toSourceCode id'
+
+showInterpreterError (WrongNumberOfArgs fn)
+  = "Wrong number of arguments for the following function: "
+  <> toSourceCode fn
+
+showInterpreterError (NoReturnStatement id')
+  = "Function " <> toSourceCode id' <> "has no return statement."
+
+showInterpreterError (EmptyVariable id')
+  = "Variable " <> toSourceCode id' <> " has no value."
+
 
 
 
@@ -365,11 +409,11 @@ data AppState = AppState
     }
 
 newtype AppM a = AppM {
-  runApp :: StateT AppState (ExceptT String IO) a
+  runApp :: StateT AppState (ExceptT InterpreterError IO) a
   } deriving ( Functor
              , Applicative
              , Monad
-             , MonadError String
+             , MonadError InterpreterError
              , MonadState AppState
              , MonadIO
              )
@@ -387,7 +431,7 @@ instance Interpretable AST () where
       Just f ->
         interpret f >> pure ()
       Nothing ->
-        throwError "\nERROR OCCURRED: main function is not defined."
+        throwError $ FunctionIsNotDefined (Identifier "main")
 
 
 instance Interpretable GlobalDeclaration () where
@@ -399,11 +443,9 @@ instance Interpretable GlobalDeclaration () where
         let fs' =  Map.insert id' f fs
         modify (\x -> x { funcs = fs' })
       (True, _) ->
-        throwError
-        $ "Function with name " <> toSourceCode id' <> " was already defined."
+        throwError $ FunctionAlreadyDefined id'
       (False, _) ->
-        throwError
-        $ "Function name " <> toSourceCode id' <> " is reserved."
+        throwError $ ReservedIdentifier id'
 
   interpret (GlobalVariableDeclaration v) =
     modify (\x -> x { scope = Global }) >> interpret v
@@ -421,13 +463,13 @@ instance Interpretable UnaryExpr Value where
     interpret e >>= (handle . castToFloat)
     where
       handle (FloatValue x) = pure $ FloatValue $ (-1) * x
-      handle x = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode x
+      handle _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret (UnaryExpr UnaryNot e) =
     interpret e >>= (handle . castToFloat)
     where
       handle (BoolValue x) = pure $ BoolValue $ not x
-      handle x = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode x
+      handle _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret (UnaryRawExpr e) = interpret e
 
@@ -439,7 +481,7 @@ instance Interpretable MultExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ FloatValue $ x * y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret e@(MultExpr Divide l r) = do
     l' <- castToFloat <$> interpret l
@@ -447,7 +489,7 @@ instance Interpretable MultExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ FloatValue $ x / y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret (MultRawExpr e) = interpret e
 
@@ -459,7 +501,7 @@ instance Interpretable AddExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ FloatValue $ x + y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret e@(AddExpr Substraction l r) = do
     l' <- castToFloat <$> interpret l
@@ -467,7 +509,7 @@ instance Interpretable AddExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ FloatValue $ x - y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret (AddRawExpr e) = interpret e
 
@@ -479,7 +521,7 @@ instance Interpretable RelationExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ BoolValue $ x > y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret e@(RelationExpr Less l r) = do
     l' <- castToFloat <$> interpret l
@@ -487,7 +529,7 @@ instance Interpretable RelationExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ BoolValue $ x < y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret e@(RelationExpr GreaterOrEq l r) = do
     l' <- castToFloat <$> interpret l
@@ -495,7 +537,7 @@ instance Interpretable RelationExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ BoolValue $ x >= y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret e@(RelationExpr LessOrEq l r) = do
     l' <- castToFloat <$> interpret l
@@ -503,7 +545,7 @@ instance Interpretable RelationExpr Value where
     handle l' r'
     where
       handle (FloatValue x) (FloatValue y) = pure $ BoolValue $ x <= y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret (RelationRawExpr e) = interpret e
 
@@ -548,7 +590,7 @@ instance Interpretable AndExpr Value where
     handle l' r'
     where
       handle (BoolValue x) (BoolValue y) = pure $ BoolValue $ x && y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret (AndRawExpr e) = interpret e
 
@@ -560,7 +602,7 @@ instance Interpretable OrExpr Value where
     handle l' r'
     where
       handle (BoolValue x) (BoolValue y) = pure $ BoolValue $ x || y
-      handle _ _ = throwError $ "\nERROR OCCURRED: Type casting error at: " <> toSourceCode e
+      handle _ _ = throwError $ TypeCastingError (toSourceCode e)
 
   interpret (OrRawExpr e) = interpret e
 
@@ -585,7 +627,7 @@ instance Interpretable BaseExpr Value where
     let lvs = localVars appState
     case (Map.lookup id' lvs) <|> (Map.lookup id' gvs) of
       Nothing ->
-         throwError $ "\nERROR OCCURRED: Unknown variable: " <> toSourceCode id'
+         throwError $ UnknownVariable id'
       Just v ->
          interpret v
 
@@ -604,13 +646,11 @@ instance Interpretable BaseExpr Value where
         liftIO $ StringValue <$> getLine
 
       (Nothing, Nothing) ->
-        throwError $ "\nERROR OCCURRED: Unknown function: " <> toSourceCode id'
+        throwError $ UnknownFunction id'
 
       (Nothing, Just f) ->
         if length (funcArgs f) /= length params then
-          throwError
-          $ "Wrong number of arguments for the following function: "
-          <> toSourceCode f
+          throwError $ WrongNumberOfArgs f
         else do
           vars <- mapM (uncurry plugExprToVar)
                   $ zip params (funcArgs f)
@@ -632,7 +672,7 @@ instance Interpretable Function Value where
       Just v ->
         pure v
       Nothing ->
-        throwError $ "\nERROR OCCURRED: Function " <> toSourceCode id' <> " has no return statement."
+        throwError $ NoReturnStatement id'
     where
       varsToMap :: [Variable] -> Map Identifier Variable
       varsToMap vars = Map.fromList $ zip (varName <$> vars) vars
@@ -721,7 +761,7 @@ instance Interpretable While (Maybe Value) where
       (BoolValue True, r) ->
         pure r
       (_, _) ->
-        throwError $ "\nERROR OCCURRED: Type cast error of " <> toSourceCode cond
+        throwError $ TypeCastingError (toSourceCode cond)
 
 
 instance Interpretable For (Maybe Value) where
@@ -742,7 +782,7 @@ instance Interpretable For (Maybe Value) where
           (BoolValue True, r) ->
             pure r
           (_, _) ->
-            throwError $ "\nERROR OCCURRED: Type cast error of " <> toSourceCode cond
+            throwError $ TypeCastingError (toSourceCode cond)
 
 
 instance Interpretable VariableUpdate () where
@@ -760,8 +800,7 @@ instance Interpretable VariableUpdate () where
         let updatedGlobals = Map.update (\_ -> Just v') id' globals
         modify (\x -> x { globalVars = updatedGlobals })
       (_, _) ->
-        throwError $ "\nERROR OCCURRED: Variable "
-        <> toSourceCode id' <> " is not defined."
+        throwError $ UnknownVariable id'
 
 
 instance Interpretable Variable Value where
@@ -769,8 +808,7 @@ instance Interpretable Variable Value where
   interpret (Variable _ TypeFloat (Just v)) = castToFloat <$> interpret v
   interpret (Variable _ TypeString (Just v)) = castToString <$> interpret v
   interpret (Variable _ TypeBool (Just v)) = castToBool <$> interpret v
-  interpret (Variable id' _ Nothing) = throwError
-    $ "\nERROR OCCURED: Variable " <> toSourceCode id' <> " has no value."
+  interpret (Variable id' _ Nothing) = throwError $ EmptyVariable id'
 
 instance Interpretable Value Value where
   interpret v = pure v

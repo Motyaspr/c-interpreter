@@ -1,4 +1,3 @@
-
 module Language.Syntax.Internals where
 
 class ToSourceCode a where
@@ -9,7 +8,3 @@ class Castable a where
   castToFloat :: a -> a
   castToString :: a -> a
   castToBool :: a -> a
-
-
--- class Interpretable a b | a -> b where
---   interpret :: a -> b

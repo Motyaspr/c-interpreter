@@ -8,7 +8,8 @@ import           Language.Lexer            (scanTokens)
 import           Language.Parser           (parseTokens)
 import           Language.Syntax.AST       (AppM (runApp), AppState (AppState),
                                             Interpretable (interpret),
-                                            Scope (Global))
+                                            Scope (Global),
+                                            showInterpreterError)
 import           Language.Syntax.Internals (ToSourceCode (toSourceCode))
 import           Options.Applicative       (Parser, execParser, flag, fullDesc,
                                             helper, info, long, metavar,
@@ -62,7 +63,10 @@ execApp config = do
       let initState =
             AppState Map.empty Map.empty Map.empty Nothing Global
       result <- runExceptT $ evalStateT (runApp $ interpret ast) initState
-      either putStrLn (pure $ pure ()) result
+      either printErr (pure $ pure ()) result
 
     (Right ast, PrettyPrinter target) ->
       writeFile target (toSourceCode ast)
+
+    where
+      printErr e = putStrLn $ "\nERROR OCCURED: " <> showInterpreterError e
