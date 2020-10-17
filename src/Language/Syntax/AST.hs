@@ -14,8 +14,11 @@ import           Control.Monad.State.Lazy  (MonadState (get), StateT (StateT),
                                             modify)
 import           Data.Map.Strict           (Map)
 import qualified Data.Map.Strict           as Map
-import           Language.Syntax.Internals (Castable (..), ToSourceCode (..))
+import           Language.Syntax.Internals (Castable (..), ToSourceCode (..),
+                                            MonadSTD (..))
 import           Text.Read                 (readMaybe)
+import Control.Monad.Trans.Class (MonadTrans (..))
+
 
 -- Abstract syntax tree a.k.a eDSL
 newtype AST = AST [GlobalDeclaration] deriving (Eq, Show)
@@ -349,8 +352,7 @@ instance Castable Value where
 
 
 -- Handling exceptions
-data InterpreterError
-  = FunctionIsNotDefined Identifier
+data InterpreterError = FunctionIsNotDefined Identifier
   | FunctionAlreadyDefined Identifier
   | ReservedIdentifier Identifier
   | TypeCastingError String
@@ -359,7 +361,7 @@ data InterpreterError
   | WrongNumberOfArgs Function
   | NoReturnStatement Identifier
   | EmptyVariable Identifier
-  deriving Show
+  deriving (Show, Eq)
 
 
 
@@ -408,8 +410,8 @@ data AppState = AppState
     , scope       :: Scope
     }
 
-newtype AppM a = AppM {
-  runApp :: StateT AppState (ExceptT InterpreterError IO) a
+newtype AppM m a = AppM {
+  runApp :: StateT AppState (ExceptT InterpreterError m) a
   } deriving ( Functor
              , Applicative
              , Monad
@@ -419,9 +421,17 @@ newtype AppM a = AppM {
              )
 
 
-class Interpretable a b | a -> b where
-  interpret :: a -> AppM b
+instance MonadTrans AppM where
+  lift = AppM . lift . lift
 
+instance MonadSTD m => MonadSTD (AppM m) where
+  readSTD = lift readSTD
+  writeSTD = lift . writeSTD
+
+
+class Interpretable a b | a -> b where
+  interpret :: MonadSTD m => a -> AppM m b
+ 
 
 instance Interpretable AST () where
   interpret (AST ds) = do
@@ -639,11 +649,11 @@ instance Interpretable BaseExpr Value where
         str <- mconcat
           <$> mapM ((fmap ((\(StringValue s) -> s) . castToString)) . interpret)
           params
-        liftIO $ putStrLn str
+        writeSTD str
         pure $ IntValue $ length str
 
       (Just ScanF, _) ->
-        liftIO $ StringValue <$> getLine
+        StringValue <$> readSTD
 
       (Nothing, Nothing) ->
         throwError $ UnknownFunction id'
@@ -656,7 +666,7 @@ instance Interpretable BaseExpr Value where
                   $ zip params (funcArgs f)
           interpret (f {funcArgs = vars})
 
-plugExprToVar :: Expr -> Variable -> AppM Variable
+plugExprToVar :: MonadSTD m => Expr -> Variable -> AppM m Variable
 plugExprToVar expr var = do
   val <- interpret expr
   pure $ var {varValue = Just val}
